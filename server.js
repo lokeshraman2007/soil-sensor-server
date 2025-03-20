@@ -80,6 +80,8 @@ app.post('/soil-data', async (req, res) => {
         console.error('Error saving data:', error);
         res.status(500).json({ error: 'Error saving data' });
     }
+}else{
+    res.status(201).json({ message: 'Data saved successfully' });
 }
 });
 
