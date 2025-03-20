@@ -39,6 +39,7 @@ wss.on('connection', (ws) => {
         const data = JSON.parse(message);
         if(data?.event === 'sensorData'){
             try {
+                console.log(data?.data)
                 const { temperature, moisture, humidity } = data?.data;
                 const currentSeconds = Math.floor(Date.now() / 1000);
     
