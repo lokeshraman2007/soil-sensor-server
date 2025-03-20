@@ -36,8 +36,7 @@ io.on('connection', (socket) => {
 
     socket.on('sensorData', async (data) => {
         console.log('Received data:', data);
-
-        const { temperature, moisture, humidity } = data;
+        const { temperature, moisture, humidity } = JSON.parse(data);
         const currentSeconds = Math.floor(Date.now() / 1000);
 
         io.emit('updateData', { temperature, moisture, humidity }); // Send data to frontend in real-time
