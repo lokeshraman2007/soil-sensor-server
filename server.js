@@ -69,10 +69,10 @@ app.post('/soil-data', async (req, res) => {
         return res.status(400).json({ error: 'Missing required fields' });
     }
 
-    io.emit('updateData', { temperature, moisture, humidity });
+    io.emit('updateData', { temperature, humidity });
     const currentSeconds = Math.floor(Date.now() / 1000);
     if (currentSeconds % 3600 === 0){
-    const newSoilData = new SoilData({ temperature, moisture, humidity });
+    const newSoilData = new SoilData({ temperature, humidity });
     try {
         await newSoilData.save();
         res.status(201).json({ message: 'Data saved successfully' });
