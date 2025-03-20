@@ -1,6 +1,6 @@
 const express = require('express');
 const http = require('http');
-const socketIo = require('socket.io');
+const WebSocket = require('ws'); // Import ws module
 const mongoose = require('mongoose');
 require('dotenv').config();
 
@@ -26,38 +26,49 @@ const SoilData = mongoose.model('SoilData', new mongoose.Schema({
 const app = express();
 app.use(express.json());
 
+// Create HTTP server
 const server = http.createServer(app);
-const io = socketIo(server, {
-    cors: {
-        origin: "*",
-        methods: ["GET", "POST"]
-    }
-});
 
-io.on('connection', (socket) => {
-    console.log('ESP32 connected:', socket.id);
+// Create WebSocket server using the ws library
+const wss = new WebSocket.Server({ server });
 
-    socket.on('sensorData', async (data) => {
-        console.log('Received data:', data);
-        const { temperature, moisture, humidity } = JSON.parse(data);
-        const currentSeconds = Math.floor(Date.now() / 1000);
+wss.on('connection', (ws) => {
+    console.log('ESP32 connected');
 
-        io.emit('updateData', { temperature, moisture, humidity });
-
-        if (currentSeconds % 3600 === 0) {
-            const newSoilData = new SoilData({ temperature, moisture, humidity });
-
+    ws.on('message', async (message) => {
+        const data = JSON.parse(message);
+        if(data?.event === 'sensorData'){
             try {
-                await newSoilData.save();
-                console.log('Data saved successfully');
-            } catch (error) {
-                console.error('Error saving data:', error);
+                const { temperature, moisture, humidity } = data?.data;
+                const currentSeconds = Math.floor(Date.now() / 1000);
+    
+                // Emit data to all connected clients (optional)
+                wss.clients.forEach(client => {
+                    if (client.readyState === WebSocket.OPEN) {
+                        client.send(JSON.stringify({ temperature, moisture, humidity }));
+                    }
+                });
+    
+                if (currentSeconds % 3600 === 0) {
+                    // Save data to the database
+                    const newSoilData = new SoilData({ temperature, moisture, humidity });
+                    try {
+                        await newSoilData.save();
+                        console.log('Data saved successfully');
+                    } catch (error) {
+                        console.error('Error saving data:', error);
+                    }
+                }
+    
+            } catch (err) {
+                console.log('Invalid JSON:', message.toString());
             }
         }
+
     });
 
-    socket.on('disconnect', () => {
-        console.log('ESP32 disconnected:', socket.id);
+    ws.on('close', () => {
+        console.log('ESP32 disconnected');
     });
 });
 
@@ -69,29 +80,37 @@ app.post('/soil-data', async (req, res) => {
         return res.status(400).json({ error: 'Missing required fields' });
     }
 
-    io.emit('updateData', { temperature, humidity });
+    // Broadcast the data to all WebSocket clients
+    wss.clients.forEach(client => {
+        if (client.readyState === WebSocket.OPEN) {
+            client.send(JSON.stringify({ temperature, humidity }));
+        }
+    });
+
     const currentSeconds = Math.floor(Date.now() / 1000);
-    if (currentSeconds % 3600 === 0){
-    const newSoilData = new SoilData({ temperature, humidity });
-    try {
-        await newSoilData.save();
+    if (currentSeconds % 3600 === 0) {
+        const newSoilData = new SoilData({ temperature, humidity });
+        try {
+            await newSoilData.save();
+            res.status(201).json({ message: 'Data saved successfully' });
+        } catch (error) {
+            console.error('Error saving data:', error);
+            res.status(500).json({ error: 'Error saving data' });
+        }
+    } else {
         res.status(201).json({ message: 'Data saved successfully' });
-    } catch (error) {
-        console.error('Error saving data:', error);
-        res.status(500).json({ error: 'Error saving data' });
     }
-}else{
-    res.status(201).json({ message: 'Data saved successfully' });
-}
 });
 
 app.get('/', (req, res) => {
     res.send('Soil Sensor Data Receiver Running');
 });
 
+// Define the port and start the server
 const LOCAL_IP = process.env.HOST || '0.0.0.0';
 const PORT = process.env.PORT || 4000;
 
 server.listen(PORT, LOCAL_IP, () => {
     console.log(`Server running on http://${LOCAL_IP}:${PORT}`);
+    console.log(`WebSocket server running on ws://${LOCAL_IP}:${PORT}`);
 });
