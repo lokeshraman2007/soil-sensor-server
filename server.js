@@ -63,14 +63,15 @@ io.on('connection', (socket) => {
 
 // POST API endpoint for soil data
 app.post('/soil-data', async (req, res) => {
-    const { temperature, moisture, humidity } = req.body;
+    const { temperature, humidity } = req.body;
 
-    if (!temperature || !moisture || !humidity) {
+    if (!temperature || !humidity) {
         return res.status(400).json({ error: 'Missing required fields' });
     }
 
     io.emit('updateData', { temperature, moisture, humidity });
-
+    const currentSeconds = Math.floor(Date.now() / 1000);
+    if (currentSeconds % 3600 === 0){
     const newSoilData = new SoilData({ temperature, moisture, humidity });
     try {
         await newSoilData.save();
@@ -79,6 +80,7 @@ app.post('/soil-data', async (req, res) => {
         console.error('Error saving data:', error);
         res.status(500).json({ error: 'Error saving data' });
     }
+}
 });
 
 app.get('/', (req, res) => {
