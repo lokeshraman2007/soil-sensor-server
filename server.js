@@ -1,14 +1,12 @@
 const express = require('express');
 const http = require('http');
-const WebSocket = require('ws'); // Import ws module
+const WebSocket = require('ws');
 const mongoose = require('mongoose');
 require('dotenv').config();
 
 async function connectToDatabase() {
     try {
-        await mongoose.connect('mongodb+srv://lokesh:lokesh2007@soilsense.hecy8.mongodb.net/soilData?retryWrites=true&w=majority', {
-            useNewUrlParser: true
-        });
+        await mongoose.connect(process.env.MONGODB_URI, { useNewUrlParser: true });
         console.log('MongoDB connected successfully');
     } catch (error) {
         console.error('MongoDB connection error:', error);
@@ -26,19 +24,15 @@ const SoilData = mongoose.model('SoilData', new mongoose.Schema({
 const app = express();
 app.use(express.json());
 
-// Create HTTP server
 const server = http.createServer(app);
-
-// Create WebSocket server using the ws library
 const wss = new WebSocket.Server({ server });
 
-let isActive = false; // Track ESP32 connection status
+let isActive = false;
 
 wss.on('connection', (ws) => {
     console.log('ESP32 connected');
     isActive = true;
 
-    // Broadcast active status
     wss.clients.forEach(client => {
         if (client.readyState === WebSocket.OPEN) {
             client.send(JSON.stringify({ active: true }));
@@ -47,26 +41,30 @@ wss.on('connection', (ws) => {
 
     ws.on('message', async (message) => {
         const data = JSON.parse(message);
+        
         if (data?.event === 'sensorData') {
-            try {
-                console.log(data?.data);
-                const { temperature, moisture, humidity } = data?.data;
+            const { temperature, moisture, humidity } = data?.data;
 
-                wss.clients.forEach(client => {
-                    if (client.readyState === WebSocket.OPEN) {
-                        client.send(JSON.stringify({ temperature, moisture, humidity }));
-                    }
-                });
-
-                const currentSeconds = Math.floor(Date.now() / 1000);
-                if (currentSeconds % 3600 === 0) {
-                    const newSoilData = new SoilData({ temperature, moisture, humidity });
-                    await newSoilData.save();
-                    console.log('Data saved successfully');
+            wss.clients.forEach(client => {
+                if (client.readyState === WebSocket.OPEN) {
+                    client.send(JSON.stringify({ temperature, moisture, humidity }));
                 }
-            } catch (err) {
-                console.log('Invalid JSON:', message.toString());
+            });
+
+            const currentSeconds = Math.floor(Date.now() / 1000);
+            if (currentSeconds % 3600 === 0) {
+                const newSoilData = new SoilData({ temperature, moisture, humidity });
+                await newSoilData.save();
+                console.log('Data saved successfully');
             }
+        }
+
+        if (data?.event === 'turnOnMotor') {
+            wss.clients.forEach(client => {
+                if (client.readyState === WebSocket.OPEN) {
+                    client.send(JSON.stringify({ event: 'turnOnMotor', data: true }));
+                }
+            });
         }
     });
 
@@ -74,7 +72,6 @@ wss.on('connection', (ws) => {
         console.log('ESP32 disconnected');
         isActive = false;
 
-        // Broadcast inactive status
         wss.clients.forEach(client => {
             if (client.readyState === WebSocket.OPEN) {
                 client.send(JSON.stringify({ active: false }));
@@ -82,7 +79,7 @@ wss.on('connection', (ws) => {
         });
     });
 });
-// POST API endpoint for soil data
+
 app.post('/soil-data', async (req, res) => {
     const { temperature, humidity } = req.body;
 
@@ -90,7 +87,6 @@ app.post('/soil-data', async (req, res) => {
         return res.status(400).json({ error: 'Missing required fields' });
     }
 
-    // Broadcast the data to all WebSocket clients
     wss.clients.forEach(client => {
         if (client.readyState === WebSocket.OPEN) {
             client.send(JSON.stringify({ temperature, humidity }));
@@ -116,7 +112,6 @@ app.get('/', (req, res) => {
     res.send('Soil Sensor Data Receiver Running');
 });
 
-// Define the port and start the server
 const LOCAL_IP = process.env.HOST || '0.0.0.0';
 const PORT = process.env.PORT || 4000;
 
