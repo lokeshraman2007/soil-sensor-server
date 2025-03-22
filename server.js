@@ -12,22 +12,19 @@ app.use(express.json());
 const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
 
-let isActive = false;
 
 wss.on('connection', (ws) => {
     console.log('ESP32 connected');
-    isActive = true;
-    console.log(wss.clients)
-    wss.clients.forEach(client => {
-        if (client.readyState === WebSocket.OPEN) {
-            client.send(JSON.stringify({ active: true }));
-        }
-    });
 
     ws.on('message', async (message) => {
         const data = JSON.parse(message);
         
         if (data?.event === 'sensorData') {
+            wss.clients.forEach(client => {
+                if (client.readyState === WebSocket.OPEN) {
+                    client.send(JSON.stringify({ active: true }));
+                }
+            });
             const { temperature, moisture, humidity } = data?.data;
 
             wss.clients.forEach(client => {
